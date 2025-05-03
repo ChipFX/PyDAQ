@@ -1,0 +1,57 @@
+channels:
+  300:
+    1:
+      mode: VOLT:DC
+      name: Volt DUT
+      nplc: 1
+      range: AUTO
+    2:
+      mode: VOLT:DC
+      name: Volt GUT
+      range: AUTO
+    3:
+      mode: TEMP
+      name: Temp X
+      # TCoupe, RTD, FRTD, THER, DEF
+      probe: TCouple
+      # TCouple:
+      #      B, E, J, K, N, R, S, T
+      # RTD:
+      #      85, 91
+      # FRTD:
+      #      85, 91
+      # THER:
+      #      2252, 5000, 10000
+      type:  J
+      resolution: 0.1
+    4:
+      mode: FREQ
+      name: xHZ
+      enabled: false
+    5:
+      mode: RES
+      name: xREzz
+      enabled: false
+  100:
+    3:
+      mode: TOT
+      # READ or RRES
+      tmode: READ
+      enabled: false
+config:
+  # local or utc
+  clock_sync: local
+  delimiter: ;
+  output: data.{starttime}.csv
+  timestamp: offset
+  with_unit: separate
+  headers:
+    - "Extra;Information;In;the;CSV"
+init:
+- '*IDN?'
+scan:
+  interval: '1'
+  count: 500
+setup:
+- '*IDN?'
+
