@@ -7,8 +7,13 @@ import decimal
 import json
 import re
 import rich
+import rich.align
 import rich.console
+import rich.layout
+import rich.live
+import rich.panel
 import rich.progress
+import rich.table
 import rich.traceback
 import select
 import serial
@@ -665,6 +670,32 @@ class Scan:
         self.csv_file.write("\n")
         self.csv_file.flush()
 
+    def _gen_display_table( self, hdata ):
+        if( verbosity < 1 ):
+            return ""
+        if( len(hdata) > 0 ):
+            headers = [ "Time" ]
+            for k in hdata[0].keys():
+                k = int(k)
+                cname = self.channel_names.get(k,k)
+                headers.append(cname)
+                headers.append(f"{cname}.ts")
+        else:
+            headers = [ "Time", "??" ]
+        table = rich.table.Table( *headers, title = "DAQ Data")
+        for hd in hdata:
+            rdata = []
+            rowoffset = None
+            for k,(v,u,t) in hd.items():
+                t = decimal.Decimal(t)
+                if( len(rdata) == 0 ):
+                    rdata.append( f"{t}" )
+                    rowoffset = t
+                rdata.append( f"{v} {u}" )
+                rdata.append( str(t - rowoffset) )
+            table.add_row( *rdata )
+        return table
+
     def run_scan( self, resume = False ):
         dtime = datetime.datetime.now()
         dstr = dtime.strftime(f"%Y.%m.%d %H.%M.%S.%f")
@@ -682,16 +713,38 @@ class Scan:
                     rich.progress.TimeElapsedColumn(),
                     rich.progress.TimeRemainingColumn()
                  ]
-        with rich.progress.Progress( *plist ) as prog:
+
+        hdata = []
+
+        table = self._gen_display_table(hdata)
+        prog = rich.progress.Progress( *plist )
+        group = rich.console.Group( table, prog )
+
+        with rich.live.Live(group) as live:
             t1 = prog.add_task(f"Scanning {len(self.prepared_config)} channels", total = count )
             if( resume ):
                 for d in self.daq.resume( ):
                     self.write_reading( d )
+                    hdata.append(d)
+                    hdata = hdata[-10:]
                     prog.update(t1,advance=1)
+                    if( verbosity > 1 ):
+                        prog.log(d)
+                    table = self._gen_display_table(hdata)
+                    group = rich.console.Group( table, prog )
+                    live.update(group)
             else:
                 for d in self.daq.stream( list( sorted( str(x) for x in self.prepared_config.keys() ) ), interval = self.scan_interval, count = self.scan_count ):
                     self.write_reading( d )
+                    hdata.append(d)
+                    hdata = hdata[-10:]
                     prog.update(t1,advance=1)
+                    if( verbosity > 1 ):
+                        prog.log(d)
+                    table = self._gen_display_table(hdata)
+                    group = rich.console.Group( table, prog )
+                    live.update(group)
+
 
     def run( self, resume = False ):
         print("Running scan config")
