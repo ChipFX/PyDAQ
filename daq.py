@@ -5,6 +5,7 @@ import argparse
 import datetime
 import decimal
 import json
+import pint
 import re
 import rich
 import rich.align
@@ -26,6 +27,10 @@ import yaml
 rich.traceback.install(show_locals=True)
 console = rich.console.Console()
 verbosity = 0
+
+ureg=pint.UnitRegistry( non_int_type = decimal.Decimal )
+ureg.formatter.default_format="~P"
+ureg.define("@alias V = VDC")
 
 def plog( lvl, *args, **kwargs ):
     if( verbosity >= lvl ):
@@ -736,14 +741,23 @@ class Scan:
             else:
                 for d in self.daq.stream( list( sorted( str(x) for x in self.prepared_config.keys() ) ), interval = self.scan_interval, count = self.scan_count ):
                     self.write_reading( d )
-                    hdata.append(d)
+                    hdata.append(d.copy())
                     hdata = hdata[-10:]
                     prog.update(t1,advance=1)
                     if( verbosity > 1 ):
                         prog.log(d)
+#                    prog.log(hdata)
                     table = self._gen_display_table(hdata)
                     group = rich.console.Group( table, prog )
                     live.update(group)
+                    if( False ):
+                        ld = d.popitem()
+                        ld = d.popitem()
+                        xd = ureg(f"{ld[1][0]} {ld[1][1]}")
+                        xd = xd.m.normalize() * xd.u
+                        xd = xd.to_compact()
+
+                        self.daq.send(f'DISP:TEXT "{xd}"')
 
 
     def run( self, resume = False ):
