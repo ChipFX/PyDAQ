@@ -6,11 +6,15 @@ dependencies = [
     "pyserial~=3.5",
     "PyYAML~=6.0.2",
     "rich~=14.0.0",
+    "Pint~=0.24",
 ]
 
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["daq"]
 
 [project.scripts]
 daq = "daq:main"
