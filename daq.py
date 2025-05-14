@@ -31,6 +31,7 @@ verbosity = 0
 ureg=pint.UnitRegistry( non_int_type = decimal.Decimal )
 ureg.formatter.default_format="~P"
 ureg.define("@alias V = VDC")
+ureg.define("@alias ohm = OHM")
 
 def plog( lvl, *args, **kwargs ):
     if( verbosity >= lvl ):
@@ -234,6 +235,7 @@ class _34970A(DAQ):
             raise RuntimeError(f"Instantiated 34970A for {self.device_name}")
         self.check_error("init")
         self.configuration = {}
+        self.buffered = 0
 
     def __str__( self ):
         # XXX Add modules too
@@ -347,12 +349,15 @@ class _34970A(DAQ):
 
     def _yield_scandata( self, scanlist, interval, count = 0 ):
         num_reads = 0
+        numdata = 0
         while True:
-            numdata = self.query("DATA:POIN?")
-            numdata = int(numdata)
+            # Don't query DATA:POIN all the time if we know there is something in the buffer for faster communication
             if( numdata < len(scanlist) ):
-                time.sleep(float(interval/len(scanlist)))
-                continue
+                numdata = self.query("DATA:POIN?")
+                numdata = int(numdata)
+                if( numdata < len(scanlist) ):
+                    time.sleep(float(interval/len(scanlist)))
+                    continue
 
             data = self.query(f"R? {len(scanlist)}",dlb=True)
             num_reads += 1
@@ -368,6 +373,9 @@ class _34970A(DAQ):
                 tstamp = vdata[i*2+1]
                 rdata[c] = (value,unit,tstamp)
 
+            numdata -= len(scanlist)
+            # Thats the amount thats still left in the device
+            self.buffered = numdata
             yield rdata
             if( count and num_reads >= count ):
                 break
@@ -747,15 +755,18 @@ class Scan:
                     if( verbosity > 1 ):
                         prog.log(d)
 #                    prog.log(hdata)
-                    table = self._gen_display_table(hdata)
+                    if( self.daq.buffered < len(self.prepared_config) ):
+                        table = self._gen_display_table(hdata)
                     group = rich.console.Group( table, prog )
                     live.update(group)
-                    if( False ):
+
+                    if( self.daq.buffered < len(self.prepared_config) ):
                         ld = d.popitem()
-                        ld = d.popitem()
+#                        ld = d.popitem()
                         xd = ureg(f"{ld[1][0]} {ld[1][1]}")
                         xd = xd.m.normalize() * xd.u
-                        xd = xd.to_compact()
+                        xd = str(xd.to_compact())
+                        xd = xd.replace("Ω","Ohm")
 
                         self.daq.send(f'DISP:TEXT "{xd}"')
 
