@@ -1,0 +1,254 @@
+channels:
+  300:
+    1:
+      mode: VOLT:DC
+      name: V-test-ch01
+      nplc: 20
+      range: AUTO
+    2:
+      mode: VOLT:DC
+      name: V-test-ch02
+      nplc: 20
+      range: AUTO
+    3:
+      mode: VOLT:DC
+      name: V-test-ch03
+      nplc: 20
+      range: AUTO
+    4:
+      mode: VOLT:DC
+      name: V-test-ch04
+      nplc: 20
+      range: AUTO
+    5:
+      mode: VOLT:DC
+      name: V-test-ch05
+      nplc: 20
+      range: AUTO
+    6:
+      mode: VOLT:DC
+      name: V-test-ch06
+      nplc: 20
+      range: AUTO
+    7:
+      mode: VOLT:DC
+      name: V-test-ch07
+      nplc: 20
+      range: AUTO
+    8:
+      mode: VOLT:DC
+      name: V-test-ch08
+      nplc: 20
+      range: AUTO
+    9:
+      mode: VOLT:DC
+      name: V-test-ch09
+      nplc: 20
+      range: AUTO
+    10:
+      mode: VOLT:DC
+      name: V-test-ch10
+      nplc: 20
+      range: AUTO
+    11:
+      mode: VOLT:DC
+      name: V-test-ch11
+      nplc: 20
+      range: AUTO
+    12:
+      mode: VOLT:DC
+      name: V-test-ch12
+      nplc: 20
+      range: AUTO
+    13:
+      mode: VOLT:DC
+      name: V-test-ch13
+      nplc: 20
+      range: AUTO
+    14:
+      mode: VOLT:DC
+      name: V-test-ch14
+      nplc: 20
+      range: AUTO
+    15:
+      mode: VOLT:DC
+      name: V-test-ch15
+      nplc: 20
+      range: AUTO
+    16:
+      mode: VOLT:DC
+      name: V-test-ch16
+      nplc: 20
+      range: AUTO
+  100:
+    1:
+      mode: TEMP
+      name: T-test-ch01
+      # TCoupe, RTD, FRTD, THER, DEF
+      probe: TCouple
+      # TCouple:
+      #      B, E, J, K, N, R, S, T
+      # RTD:
+      #      85, 91
+      # FRTD:
+      #      85, 91
+      # THER:
+      #      2252, 5000, 10000
+      type:  J
+      resolution: 0.01
+    2:
+      mode: TEMP
+      name: T-test-ch02
+      probe: TCouple
+      type:  J
+      resolution: 0.01
+    3:
+      mode: TEMP
+      name: T-test-ch03
+      probe: TCouple
+      type:  J
+      resolution: 0.01
+    4:
+      mode: TEMP
+      name: T-test-ch04
+      probe: TCouple
+      type:  J
+      resolution: 0.01
+    5:
+      mode: TEMP
+      name: T-test-ch05
+      probe: TCouple
+      type:  J
+      resolution: 0.01
+    6:
+      mode: TEMP
+      name: T-test-ch06
+      probe: TCouple
+      type:  J
+      resolution: 0.01
+    7:
+      mode: TEMP
+      name: T-test-ch07
+      probe: TCouple
+      type:  J
+      resolution: 0.01
+    8:
+      mode: TEMP
+      name: T-test-ch08
+      probe: TCouple
+      type:  J
+      resolution: 0.01
+    9:
+      mode: TEMP
+      name: T-test-ch09
+      probe: TCouple
+      type:  J
+      resolution: 0.01
+    10:
+      mode: TEMP
+      name: T-test-ch10
+      probe: TCouple
+      type:  J
+      resolution: 0.01
+    11:
+      mode: TEMP
+      name: T-test-ch11
+      probe: TCouple
+      type:  J
+      resolution: 0.01
+    12:
+      mode: TEMP
+      name: T-test-ch12
+      probe: TCouple
+      type:  J
+      resolution: 0.01
+    13:
+      mode: TEMP
+      name: T-test-ch13
+      probe: TCouple
+      type:  J
+      resolution: 0.01
+    14:
+      mode: TEMP
+      name: T-test-ch14
+      probe: TCouple
+      type:  J
+      resolution: 0.01
+    15:
+      mode: TEMP
+      name: T-test-ch15
+      probe: TCouple
+      type:  J
+      resolution: 0.01
+    16:
+      mode: TEMP
+      name: T-test-ch16
+      probe: TCouple
+      type:  J
+      resolution: 0.01
+  200:
+    1:
+      mode: RES
+      name: R-test-ch01
+    2:
+      mode: RES
+      name: R-test-ch02
+    3:
+      mode: RES
+      name: R-test-ch03
+    4:
+      mode: RES
+      name: R-test-ch04
+    5:
+      mode: RES
+      name: R-test-ch05
+    6:
+      mode: RES
+      name: R-test-ch06
+    7:
+      mode: RES
+      name: R-test-ch07
+    8:
+      mode: RES
+      name: R-test-ch08
+    9:
+      mode: RES
+      name: R-test-ch09
+    10:
+      mode: RES
+      name: R-test-ch10
+    11:
+      mode: RES
+      name: R-test-ch11
+    12:
+      mode: RES
+      name: R-test-ch12
+    13:
+      mode: RES
+      name: R-test-ch13
+    14:
+      mode: RES
+      name: R-test-ch14
+    15:
+      mode: RES
+      name: R-test-ch15
+    16:
+      mode: RES
+      name: R-test-ch16
+config:
+  # local or utc
+  clock_sync: local
+  delimiter: ;
+  output: data.{starttime}.csv
+  timestamp: offset
+  with_unit: separate
+  headers:
+    - "Testing Device functions; T-J; R-Low; V-ladder@32V"
+init:
+- '*IDN?'
+scan:
+  interval: '20'
+  count: 10
+setup:
+- '*IDN?'
+
