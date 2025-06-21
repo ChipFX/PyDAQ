@@ -1,0 +1,5 @@
+.venv
+*.csv
+*.zip
+__pychache__
+dag.egg-info
