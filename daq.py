@@ -33,6 +33,13 @@ ureg.formatter.default_format="~P"
 ureg.define("@alias V = VDC")
 ureg.define("@alias ohm = OHM")
 
+def format_unit( v, u ):
+    udata = ureg( f"{v} {u}" )
+    udata = udata.m.normalize() * udata.u
+    udata = str(udata.to_compact())
+    return udata
+
+
 def plog( lvl, *args, **kwargs ):
     if( verbosity >= lvl ):
         # XXX Add any nice logging stuff here, possibly one level for console and one for the file
@@ -159,9 +166,9 @@ class SCPI(abc.ABC):
         ret = []
         while True:
             err = self.query("SYST:ERR?", handle_errors = False)
-            if( err.startswith("+0") ):
+            if( isinstance(err,str) and err.startswith("+0") ):
                 break
-            ret.append(err)
+            ret.append(str(err))
         if( len(ret) > 0 ):
             raise RuntimeError(f"SCPI Error on '{cmd}': {','.join(ret)}")
 
@@ -427,6 +434,8 @@ class _34970A(DAQ):
         ret = []
         for i in [ 100, 200, 300 ]:
             manufacturer,device,serial,version = self.query(f"SYST:CTYP? {i}").split(",")
+            if( device == "0" ):
+                continue
             if( device not in self.MODULES ):
                 raise RuntimeError(f"Module {device} in slot {i} unknown, please add configuration to the list of known modules")
             num_channels = self.MODULES.get( device )
@@ -441,6 +450,9 @@ class Scan:
         self.daq = daq
         self.known_channels = set( daq.get_channels() )
         self.channel_names = {}
+        self.history_data = []
+        self.history_tables = None
+        self.display_channel = None
 
     # Remove stuff from the configuration data tree so in the end we can tell that something was left we don't know
     # about
@@ -496,6 +508,13 @@ class Scan:
         mode = self._consume( channeldata, "mode" )
         if( name is not None ):
             self.channel_names[channel_id] = name
+
+        display = self._consume( channeldata, "display", None )
+        if( display is not None and display ):
+            if( self.display_channel is not None ):
+                raise RuntimeError(f"Cannot configure multiple channels for device display: {self.display_channel} and {channel_id}")
+            else:
+                self.display_channel = str(channel_id)
 
         self.prepared_config[channel_id] = []
         match mode:
@@ -618,6 +637,18 @@ class Scan:
 
         return timestamp
 
+    def display_reading( self, reading ):
+        if( self.display_channel is None ):
+            return
+        if( self.daq.buffered >= len(self.prepared_config) ):
+            return
+        data = reading[self.display_channel]
+
+        xd = format_unit( data[0], data[1] )
+        xd = xd.replace("Ω","Ohm")
+
+        self.daq.send(f'DISP:TEXT "{xd}"')
+
 
     def write_reading( self, reading ):
         self.write_reading_csv( reading )
@@ -683,31 +714,59 @@ class Scan:
         self.csv_file.write("\n")
         self.csv_file.flush()
 
-    def _gen_display_table( self, hdata ):
+    def _gen_display_tables( self, hdata ):
         if( verbosity < 1 ):
-            return ""
+            return [ "" ]
         if( len(hdata) > 0 ):
-            headers = [ "Time" ]
+            headers = [ ]
             for k in hdata[0].keys():
                 k = int(k)
                 cname = self.channel_names.get(k,k)
                 headers.append(cname)
-                headers.append(f"{cname}.ts")
+                headers.append(f"ts")
         else:
-            headers = [ "Time", "??" ]
-        table = rich.table.Table( *headers, title = "DAQ Data")
-        for hd in hdata:
-            rdata = []
+            return [ "Waiting for data..." ]
+        tables = []
+
+        data_per_table = 8
+        num_tables = 1 + len(hdata[0]) // data_per_table
+
+        for i in range(0,num_tables):
+            split_headers = [ "Time" ] + headers[2*i*data_per_table:2*i*data_per_table+2*data_per_table]
+            table = rich.table.Table( *split_headers, title = f"DAQ Data set {i}")
+            tables.append( table )
+
+        for hd in hdata: # each is a new row
+            row_data = []
+            for i in range(0,num_tables):
+                row_data.append([])
+
             rowoffset = None
-            for k,(v,u,t) in hd.items():
+            for i,(k,(v,u,t)) in enumerate(hd.items()):
+                table_index = i // data_per_table
+                rdata = row_data[table_index]
                 t = decimal.Decimal(t)
                 if( len(rdata) == 0 ):
                     rdata.append( f"{t}" )
                     rowoffset = t
-                rdata.append( f"{v} {u}" )
+                udata = format_unit( v, u )
+                rdata.append( udata )
                 rdata.append( str(t - rowoffset) )
-            table.add_row( *rdata )
-        return table
+            for i,rdata in enumerate(row_data):
+                tables[i].add_row( *rdata )
+        return tables
+
+    def _gen_display_group( self, prog, task, d ):
+        self.history_data.append(d.copy())
+        self.history_data = self.history_data[-10:]
+        prog.update(task,advance=1)
+        if( verbosity > 1 ):
+            prog.log(d)
+        # Update display table only if all data has been read from the DAQ
+        if( self.daq.buffered < len(self.prepared_config) ):
+            self.history_tables = self._gen_display_tables(self.history_data)
+        group = rich.console.Group( *self.history_tables , prog )
+        return group
 
     def run_scan( self, resume = False ):
         dtime = datetime.datetime.now()
@@ -727,48 +786,28 @@ class Scan:
                     rich.progress.TimeRemainingColumn()
                  ]
 
-        hdata = []
+        self.history_data = []
 
-        table = self._gen_display_table(hdata)
+        self.history_tables = self._gen_display_tables(self.history_data)
         prog = rich.progress.Progress( *plist )
-        group = rich.console.Group( table, prog )
+        group = rich.console.Group( *self.history_tables, prog )
 
         with rich.live.Live(group) as live:
-            t1 = prog.add_task(f"Scanning {len(self.prepared_config)} channels", total = count )
+            task = prog.add_task(f"Scanning {len(self.prepared_config)} channels", total = count )
             if( resume ):
                 for d in self.daq.resume( ):
                     self.write_reading( d )
-                    hdata.append(d)
-                    hdata = hdata[-10:]
-                    prog.update(t1,advance=1)
-                    if( verbosity > 1 ):
-                        prog.log(d)
-                    table = self._gen_display_table(hdata)
-                    group = rich.console.Group( table, prog )
+                    group = self._gen_display_group( prog, task, d )
                     live.update(group)
+                    self.display_reading(d)
             else:
                 for d in self.daq.stream( list( sorted( str(x) for x in self.prepared_config.keys() ) ), interval = self.scan_interval, count = self.scan_count ):
                     self.write_reading( d )
-                    hdata.append(d.copy())
-                    hdata = hdata[-10:]
-                    prog.update(t1,advance=1)
-                    if( verbosity > 1 ):
-                        prog.log(d)
-#                    prog.log(hdata)
-                    if( self.daq.buffered < len(self.prepared_config) ):
-                        table = self._gen_display_table(hdata)
-                    group = rich.console.Group( table, prog )
+                    group = self._gen_display_group( prog, task, d )
                     live.update(group)
+                    self.display_reading(d)
 
-                    if( self.daq.buffered < len(self.prepared_config) ):
-                        ld = d.popitem()
 #                        ld = d.popitem()
-                        xd = ureg(f"{ld[1][0]} {ld[1][1]}")
-                        xd = xd.m.normalize() * xd.u
-                        xd = str(xd.to_compact())
-                        xd = xd.replace("Ω","Ohm")
-
-                        self.daq.send(f'DISP:TEXT "{xd}"')
 
 
     def run( self, resume = False ):
@@ -947,6 +986,7 @@ def main( ):
     parser.add_argument("-P","--port", type = int, action = "store", help = "Port to connect to " )
     parser.add_argument("-d","--hwid", action = "store", default = ".*", help = "Serial device filter" )
     parser.add_argument("-n","--no-abort", action = "store_true", help = "Don't abort on ctrl-c")
+    parser.add_argument("-A","--all-abort", action = "store_true", help = "Abort on all errors")
 
     args = parser.parse_args(sys.argv[1:])
     bits,parity,stopbits = parse_serial_config( args.serial )
@@ -981,6 +1021,10 @@ def main( ):
             case _:
                 print(f"Invalid argument to -t: {args.time}")
         return
+
+#    daq.send("ROUT:CLOS (@101)")
+#    daq.send("ROUT:OPEN (@101)")
+#    return 0
     scan = Scan(daq)
     cfgdata = load_config( args.configfile[0] )
 #    print(f"{cfgdata=}")
@@ -1001,6 +1045,16 @@ def main( ):
                 except RuntimeError as e:
                     print(f"Abort returned error: {e}")
                     time.sleep(0.1)
+    finally:
+        if( args.all_abort ):
+            while True:
+                try:
+                    daq.abort()
+                    break
+                except RuntimeError as e:
+                    print(f"Abort returned error: {e}")
+                    time.sleep(0.1)
+
 
     print("Done")
 
