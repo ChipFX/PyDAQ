@@ -729,7 +729,9 @@ class Scan:
         tables = []
 
         data_per_table = 8
-        num_tables = 1 + len(hdata[0]) // data_per_table
+        num_tables = len(hdata[0]) // data_per_table
+        if( len(hdata[0]) % data_per_table != 0 ):
+            num_tables += 1
 
         for i in range(0,num_tables):
             split_headers = [ "Time" ] + headers[2*i*data_per_table:2*i*data_per_table+2*data_per_table]
@@ -746,9 +748,10 @@ class Scan:
                 table_index = i // data_per_table
                 rdata = row_data[table_index]
                 t = decimal.Decimal(t)
-                if( len(rdata) == 0 ):
-                    rdata.append( f"{t}" )
+                if( rowoffset is None ):
                     rowoffset = t
+                if( len(rdata) == 0 ):
+                    rdata.append( f"{rowoffset}" )
                 udata = format_unit( v, u )
                 rdata.append( udata )
                 rdata.append( str(t - rowoffset) )
