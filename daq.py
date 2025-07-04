@@ -20,7 +20,9 @@ import select
 import serial
 import serial.tools.list_ports
 import socket
+import socketserver
 import sys
+import threading
 import time
 import yaml
 
@@ -150,6 +152,7 @@ class SCPI(abc.ABC):
 
     def __init__( self, connection ):
         self.connection = connection
+        self.lock = threading.RLock()
 
         idn = self.query("*IDN?").split(",")
         self.manufacturer = idn[0]
@@ -173,6 +176,10 @@ class SCPI(abc.ABC):
             raise RuntimeError(f"SCPI Error on '{cmd}': {','.join(ret)}")
 
     def query( self, cmd, *, handle_errors = True, dlb = False ):
+        with self.lock:
+            return self._query( cmd, handle_errors = handle_errors, dlb = dlb )
+
+    def _query( self, cmd, *, handle_errors = True, dlb = False ):
         """
         Issues a query cmd and gathers the return. SCPI specs expect the cmd to contain a ? at the cmd end but we do not
         check this, the caller is reponsible
@@ -209,6 +216,10 @@ class SCPI(abc.ABC):
         return ret
 
     def send( self, cmd, *, handle_errors = True ):
+        with self.lock:
+            return self._send( cmd, handle_errors = handle_errors )
+
+    def _send( self, cmd, *, handle_errors = True ):
         """
         Sends some command (configuration ususally) without caring for a return. Should not contain a ? as otherwise the
         device sends something back.
@@ -957,6 +968,41 @@ def load_config( configfile ):
     else:
         return load_config_json( configfile )
 
+class CmdServer:
+
+    class Handler( socketserver.StreamRequestHandler):
+
+        def handle(self):
+            daq = self.server.daq
+            while True:
+                line  = self.rfile.readline(1024).rstrip()
+                line = line.decode("utf-8")
+                ret = daq.query_or_send( line )
+                ret += "\n"
+                self.wfile.write(ret.encode("utf-8"))
+
+    def __init__( self, daq, port ):
+        self.daq = daq
+        self.thread = threading.Thread( target = self.run )
+        self.thread.daemon = True
+        socketserver.TCPServer.allow_reuse_port = True
+        socketserver.TCPServer.allow_reuse_address = True
+        self.server = socketserver.TCPServer( ( "localhost", port ), CmdServer.Handler )
+        self.server.daq = daq
+        self.server.timeout = 0.25
+        self.keep_running = True
+
+
+    def run( self ):
+        while self.keep_running:
+            self.server.handle_request()
+        self.server.shutdown()
+
+    def start( self ):
+        self.thread.start()
+
+    def stop( self ):
+        self.keep_running = False
 
 def main( ):
 
@@ -985,11 +1031,13 @@ def main( ):
     parser.add_argument("-b","--baudrate", action = "store", default = 19200, help = "serial device baudrate" )
     parser.add_argument("-r","--resume", action = "store_true" )
     parser.add_argument("-s","--serial", action = "store", default = "8N1", help = "Serial configuration" )
+    parser.add_argument("-L","--listen", action = "store", type = int, nargs = "?", const = 5025, help = "Open a command accepting server at the specified port" )
     parser.add_argument("-H","--host", action = "store", help = "Host to connect to" )
     parser.add_argument("-P","--port", type = int, action = "store", help = "Port to connect to " )
     parser.add_argument("-d","--hwid", action = "store", default = ".*", help = "Serial device filter" )
     parser.add_argument("-n","--no-abort", action = "store_true", help = "Don't abort on ctrl-c")
     parser.add_argument("-A","--all-abort", action = "store_true", help = "Abort on all errors")
+    parser.add_argument("-C","--command", action = "append", nargs = "+", help = "Abort on all errors")
 
     args = parser.parse_args(sys.argv[1:])
     bits,parity,stopbits = parse_serial_config( args.serial )
@@ -1034,6 +1082,9 @@ def main( ):
 #    cfgdata = ydata
     scan.load(cfgdata)
     try:
+        if( args.listen ):
+            server = CmdServer( daq, args.listen )
+            server.start()
         daq.show_modules()
         scan.run(args.resume)
         daq.resume()
@@ -1057,6 +1108,8 @@ def main( ):
                 except RuntimeError as e:
                     print(f"Abort returned error: {e}")
                     time.sleep(0.1)
+        if( args.listen ):
+            server.stop()
 
 
     print("Done")
