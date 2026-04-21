@@ -246,6 +246,7 @@ class _34970A(DAQ):
             "34907A" : ( 5 ),
             "34903A" : ( 20 ),
             "34902A" : ( 16 ),
+            "34901A" : ( 22 ),
             }
     def __init__( self, connection ):
         super().__init__(connection)
