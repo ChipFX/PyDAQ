@@ -1,0 +1,4 @@
+pyserial~=3.5
+PyYAML~=6.0.2
+rich~=14.0.0
+Pint~=0.24
